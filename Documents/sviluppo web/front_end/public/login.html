@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <!-- Link a Bootstrap per uno stile rapido e responsivo -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
+        <div class="card p-4" style="width: 100%; max-width: 400px;">
+            <h3 class="text-center">Login</h3>
+            <!-- Form di Login -->
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="username">Nome Utente</label>
+                    <input type="text" class="form-control" id="username" placeholder="Inserisci il nome utente" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" class="form-control" id="password" placeholder="Inserisci la password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+                <button type="button" class="btn btn-secondary btn-block" onclick="redirectToRegister()">Primo Login</button>
+            </form>
+            <div id="loginMessage" class="text-center mt-3"></div>
+        </div>
+    </div>
+
+    <!-- Script per gestire la logica di login e registrazione -->
+    <script>
+        // Funzione per gestire il login
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch('https://nome-app.vercel.app/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('loginMessage').innerText = 'Login eseguito con successo!';
+                    // Salva il token JWT per le future richieste
+                    localStorage.setItem('token', data.token);
+                    // Reindirizza alla home o alla pagina protetta
+                    window.location.href = '/home.html';
+                } else {
+                    document.getElementById('loginMessage').innerText = data.message || 'Errore durante il login';
+                }
+            } catch (error) {
+                console.error('Errore:', error);
+                document.getElementById('loginMessage').innerText = 'Errore di connessione al server';
+            }
+        });
+
+        // Funzione per reindirizzare alla pagina di registrazione
+        function redirectToRegister() {
+            window.location.href = '/register.html';
+        }
+    </script>
+
+    <!-- Bootstrap JS e dipendenze -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
