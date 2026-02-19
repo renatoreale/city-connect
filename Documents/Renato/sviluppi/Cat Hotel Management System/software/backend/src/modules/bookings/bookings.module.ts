@@ -11,6 +11,7 @@ import { Quote } from '../quotes/entities/quote.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { TenantSettings } from '../tenants/entities/tenant-settings.entity';
 import { Cat } from '../cats/entities/cat.entity';
+import { Appointment } from '../appointments/entities/appointment.entity';
 import { PriceListModule } from '../price-list/price-list.module';
 import { TenantPriceOverridesModule } from '../tenant-price-overrides/tenant-price-overrides.module';
 import { AvailabilityModule } from '../availability/availability.module';
@@ -27,6 +28,7 @@ import { AvailabilityModule } from '../availability/availability.module';
       Payment,
       TenantSettings,
       Cat,
+      Appointment,
     ]),
     PriceListModule,
     TenantPriceOverridesModule,

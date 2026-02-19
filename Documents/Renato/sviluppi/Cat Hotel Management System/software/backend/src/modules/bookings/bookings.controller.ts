@@ -18,6 +18,8 @@ import {
   ChangeStatusDto,
   AddExtraDto,
   CreateDailyOverrideDto,
+  PerformCheckInDto,
+  PerformCheckOutDto,
 } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -61,6 +63,24 @@ export class BookingsController {
     });
   }
 
+  @Get('today-arrivals')
+  @Roles(RoleType.ADMIN, RoleType.CEO, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async getTodayArrivals(@CurrentTenant() tenantId: string) {
+    return this.bookingsService.getTodayArrivals(tenantId);
+  }
+
+  @Get('today-departures')
+  @Roles(RoleType.ADMIN, RoleType.CEO, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async getTodayDepartures(@CurrentTenant() tenantId: string) {
+    return this.bookingsService.getTodayDepartures(tenantId);
+  }
+
+  @Get('in-stay')
+  @Roles(RoleType.ADMIN, RoleType.CEO, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async getInStay(@CurrentTenant() tenantId: string) {
+    return this.bookingsService.getInStay(tenantId);
+  }
+
   @Get(':id')
   @Roles(RoleType.ADMIN, RoleType.CEO, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
   async findOne(
@@ -100,6 +120,28 @@ export class BookingsController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.bookingsService.changeStatus(id, tenantId, dto, user.id);
+  }
+
+  @Post(':id/check-in')
+  @Roles(RoleType.ADMIN, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async performCheckIn(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PerformCheckInDto,
+    @CurrentUser() user: any,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.bookingsService.performCheckIn(id, tenantId, dto, user.id);
+  }
+
+  @Post(':id/check-out')
+  @Roles(RoleType.ADMIN, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async performCheckOut(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PerformCheckOutDto,
+    @CurrentUser() user: any,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.bookingsService.performCheckOut(id, tenantId, dto, user.id);
   }
 
   @Post(':id/extras')

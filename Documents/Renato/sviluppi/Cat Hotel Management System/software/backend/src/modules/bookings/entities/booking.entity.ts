@@ -14,6 +14,7 @@ import { BookingLineItem } from './booking-line-item.entity';
 import { BookingCat } from './booking-cat.entity';
 import { BookingStatusHistory } from './booking-status-history.entity';
 import { BookingDailyOverride } from './booking-daily-override.entity';
+import { Appointment } from '../../appointments/entities/appointment.entity';
 
 export enum BookingStatus {
   CONFERMATA = 'confermata',
@@ -161,6 +162,9 @@ export class Booking {
 
   @OneToMany(() => BookingDailyOverride, (override) => override.booking)
   dailyOverrides: BookingDailyOverride[];
+
+  @OneToMany(() => Appointment, (appt) => appt.booking)
+  appointments: Appointment[];
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

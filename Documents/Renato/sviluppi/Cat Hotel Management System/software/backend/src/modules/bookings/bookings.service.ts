@@ -16,7 +16,9 @@ import { Payment, PaymentType } from '../payments/entities/payment.entity';
 import { TenantSettings } from '../tenants/entities/tenant-settings.entity';
 import { PriceListService } from '../price-list/price-list.service';
 import { TenantPriceOverridesService } from '../tenant-price-overrides/tenant-price-overrides.service';
-import { ConvertQuoteDto, UpdateBookingDto, ChangeStatusDto, AddExtraDto, CreateDailyOverrideDto } from './dto';
+import { Appointment, AppointmentStatus } from '../appointments/entities/appointment.entity';
+import { ScheduleType } from '../appointments/entities/appointment-weekly-schedule.entity';
+import { ConvertQuoteDto, UpdateBookingDto, ChangeStatusDto, AddExtraDto, CreateDailyOverrideDto, PerformCheckInDto, PerformCheckOutDto } from './dto';
 import { AvailabilityService } from '../availability/availability.service';
 
 // Valid state transitions
@@ -50,6 +52,8 @@ export class BookingsService {
     private tenantSettingsRepository: Repository<TenantSettings>,
     @InjectRepository(BookingDailyOverride)
     private dailyOverrideRepository: Repository<BookingDailyOverride>,
+    @InjectRepository(Appointment)
+    private appointmentRepository: Repository<Appointment>,
     private priceListService: PriceListService,
     private priceOverridesService: TenantPriceOverridesService,
     private availabilityService: AvailabilityService,
@@ -582,6 +586,218 @@ export class BookingsService {
       order: { overrideDate: 'ASC' },
     });
   }
+
+  // ─── Operational: Check-in / Check-out / Dashboard ──────
+
+  async performCheckIn(
+    id: string,
+    tenantId: string,
+    dto: PerformCheckInDto,
+    userId: string,
+  ): Promise<Booking> {
+    const booking = await this.findById(id, tenantId);
+
+    // Validate status
+    if (booking.status !== BookingStatus.CONFERMATA) {
+      throw new BadRequestException(
+        `Impossibile effettuare il check-in: la prenotazione è in stato "${booking.status}". Deve essere "confermata".`,
+      );
+    }
+
+    // Validate deposit payment (always required)
+    const totalDeposit = await this.getTotalPayments(id, [PaymentType.CAPARRA]);
+    if (totalDeposit < Number(booking.depositRequired)) {
+      throw new BadRequestException(
+        `Caparra insufficiente. Richiesta: €${booking.depositRequired}, Versata: €${totalDeposit.toFixed(2)}`,
+      );
+    }
+
+    // Validate checkin payment if required by tenant settings
+    const settings = await this.tenantSettingsRepository.findOne({ where: { tenantId } });
+    if (settings?.requireCheckinPaymentAtCheckin) {
+      const checkinPaid = await this.getTotalPayments(id, [PaymentType.ACCONTO_CHECKIN]);
+      if (checkinPaid < Number(booking.checkinPaymentRequired)) {
+        throw new BadRequestException(
+          `Acconto check-in insufficiente. Richiesto: €${booking.checkinPaymentRequired}, Versato: €${checkinPaid.toFixed(2)}`,
+        );
+      }
+    }
+
+    // Transition CONFERMATA → CHECK_IN
+    booking.status = BookingStatus.CHECK_IN;
+    booking.updatedBy = userId;
+    await this.bookingRepository.save(booking);
+
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        bookingId: id,
+        fromStatus: BookingStatus.CONFERMATA,
+        toStatus: BookingStatus.CHECK_IN,
+        changedBy: userId,
+        notes: dto.notes || 'Check-in effettuato',
+      }),
+    );
+
+    // Transition CHECK_IN → IN_CORSO
+    booking.status = BookingStatus.IN_CORSO;
+    await this.bookingRepository.save(booking);
+
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        bookingId: id,
+        fromStatus: BookingStatus.CHECK_IN,
+        toStatus: BookingStatus.IN_CORSO,
+        changedBy: userId,
+        notes: 'Soggiorno avviato',
+      }),
+    );
+
+    // Mark check-in appointment as COMPLETED
+    const checkInAppointment = await this.appointmentRepository.findOne({
+      where: {
+        bookingId: id,
+        appointmentType: ScheduleType.CHECK_IN,
+        status: AppointmentStatus.SCHEDULED,
+      },
+    });
+
+    if (checkInAppointment) {
+      checkInAppointment.status = AppointmentStatus.COMPLETED;
+      checkInAppointment.updatedBy = userId;
+      await this.appointmentRepository.save(checkInAppointment);
+    }
+
+    return this.findById(id, tenantId);
+  }
+
+  async performCheckOut(
+    id: string,
+    tenantId: string,
+    dto: PerformCheckOutDto,
+    userId: string,
+  ): Promise<Booking> {
+    const booking = await this.findById(id, tenantId);
+
+    // Validate status
+    if (booking.status !== BookingStatus.IN_CORSO) {
+      throw new BadRequestException(
+        `Impossibile effettuare il check-out: la prenotazione è in stato "${booking.status}". Deve essere "in_corso".`,
+      );
+    }
+
+    // Validate checkout payment if required by tenant settings
+    const settings = await this.tenantSettingsRepository.findOne({ where: { tenantId } });
+    if (settings?.requireCheckoutPaymentAtCheckout) {
+      const checkoutPaid = await this.getTotalPayments(id, [PaymentType.SALDO_CHECKOUT]);
+      if (checkoutPaid < Number(booking.checkoutPaymentRequired)) {
+        throw new BadRequestException(
+          `Saldo check-out insufficiente. Richiesto: €${booking.checkoutPaymentRequired}, Versato: €${checkoutPaid.toFixed(2)}`,
+        );
+      }
+    }
+
+    // Transition IN_CORSO → CHECK_OUT
+    booking.status = BookingStatus.CHECK_OUT;
+    booking.updatedBy = userId;
+    await this.bookingRepository.save(booking);
+
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        bookingId: id,
+        fromStatus: BookingStatus.IN_CORSO,
+        toStatus: BookingStatus.CHECK_OUT,
+        changedBy: userId,
+        notes: dto.notes || 'Check-out effettuato',
+      }),
+    );
+
+    // Transition CHECK_OUT → CHIUSA
+    booking.status = BookingStatus.CHIUSA;
+    await this.bookingRepository.save(booking);
+
+    await this.statusHistoryRepository.save(
+      this.statusHistoryRepository.create({
+        bookingId: id,
+        fromStatus: BookingStatus.CHECK_OUT,
+        toStatus: BookingStatus.CHIUSA,
+        changedBy: userId,
+        notes: 'Prenotazione chiusa',
+      }),
+    );
+
+    // Mark check-out appointment as COMPLETED
+    const checkOutAppointment = await this.appointmentRepository.findOne({
+      where: {
+        bookingId: id,
+        appointmentType: ScheduleType.CHECK_OUT,
+        status: AppointmentStatus.SCHEDULED,
+      },
+    });
+
+    if (checkOutAppointment) {
+      checkOutAppointment.status = AppointmentStatus.COMPLETED;
+      checkOutAppointment.updatedBy = userId;
+      await this.appointmentRepository.save(checkOutAppointment);
+    }
+
+    return this.findById(id, tenantId);
+  }
+
+  async getTodayArrivals(tenantId: string): Promise<Booking[]> {
+    const today = new Date().toISOString().substring(0, 10);
+
+    return this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.client', 'client')
+      .leftJoinAndSelect('booking.bookingCats', 'bookingCats')
+      .leftJoinAndSelect('bookingCats.cat', 'cat')
+      .leftJoinAndSelect('booking.appointments', 'appointment', 'appointment.deletedAt IS NULL')
+      .where('booking.tenantId = :tenantId', { tenantId })
+      .andWhere('booking.deletedAt IS NULL')
+      .andWhere('booking.checkInDate = :today', { today })
+      .andWhere('booking.status IN (:...statuses)', {
+        statuses: [BookingStatus.CONFERMATA, BookingStatus.CHECK_IN],
+      })
+      .orderBy('appointment.startTime', 'ASC')
+      .addOrderBy('booking.bookingNumber', 'ASC')
+      .getMany();
+  }
+
+  async getTodayDepartures(tenantId: string): Promise<Booking[]> {
+    const today = new Date().toISOString().substring(0, 10);
+
+    return this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.client', 'client')
+      .leftJoinAndSelect('booking.bookingCats', 'bookingCats')
+      .leftJoinAndSelect('bookingCats.cat', 'cat')
+      .leftJoinAndSelect('booking.appointments', 'appointment', 'appointment.deletedAt IS NULL')
+      .where('booking.tenantId = :tenantId', { tenantId })
+      .andWhere('booking.deletedAt IS NULL')
+      .andWhere('booking.checkOutDate = :today', { today })
+      .andWhere('booking.status IN (:...statuses)', {
+        statuses: [BookingStatus.IN_CORSO, BookingStatus.CHECK_OUT],
+      })
+      .orderBy('appointment.startTime', 'ASC')
+      .addOrderBy('booking.bookingNumber', 'ASC')
+      .getMany();
+  }
+
+  async getInStay(tenantId: string): Promise<Booking[]> {
+    return this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.client', 'client')
+      .leftJoinAndSelect('booking.bookingCats', 'bookingCats')
+      .leftJoinAndSelect('bookingCats.cat', 'cat')
+      .where('booking.tenantId = :tenantId', { tenantId })
+      .andWhere('booking.deletedAt IS NULL')
+      .andWhere('booking.status = :status', { status: BookingStatus.IN_CORSO })
+      .orderBy('booking.checkOutDate', 'ASC')
+      .addOrderBy('booking.bookingNumber', 'ASC')
+      .getMany();
+  }
+
+  // ─── Private helpers ──────────────────────────────────────
 
   private async recalculateTotals(id: string, tenantId: string, userId: string): Promise<void> {
     const booking = await this.findById(id, tenantId);

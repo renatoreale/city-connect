@@ -1,0 +1,392 @@
+Premessa tecnica (vincoli non negoziabili)
+
+L’applicazione dovrà integrarsi con un database MySQL già esistente.
+
+Si specifica che:
+
+È consentita la creazione di nuove tabelle.
+
+Le tabelle MySQL già esistenti non devono essere modificate in modo distruttivo.
+
+È ammesso il mapping applicativo verso le tabelle esistenti (ORM o equivalente), purché non vengano alterati dati o strutture già in uso.
+
+Non vengono imposti vincoli su:
+
+linguaggi di programmazione
+
+framework backend o frontend
+
+architettura applicativa (monolite o servizi)
+
+provider email o librerie PDF
+a condizione che tutti i requisiti funzionali descritti nel presente documento siano rispettati.
+
+Le DDL delle tabelle MySQL esistenti verranno fornite in una fase successiva, dopo l’allineamento sui requisiti funzionali e prima della definizione finale del data model e dell’implementazione.
+
+BLOCCO 0 — Fondazioni tecniche
+
+Obiettivo: predisporre una base solida, sicura e auditabile su cui costruire tutte le funzionalità successive.
+
+Contenuto
+
+Setup progetto applicativo
+
+Connessione a database MySQL (con rispetto dei vincoli sopra indicati)
+
+Autenticazione utenti
+
+Sistema di ruoli e permessi (RBAC)
+
+Multi-tenant:
+
+entità “Pensione / Tenant”
+
+segregazione dei dati per tenant
+
+Audit append-only:
+
+tracciamento create / update / delete
+
+registrazione di utente, ruolo, tenant e timestamp
+
+Output
+
+Login funzionante
+
+Utenti associabili a uno o più tenant
+
+Isolamento dati garantito
+
+Audit popolato automaticamente
+
+Criteri di accettazione
+
+Nessun utente può accedere a dati di tenant non autorizzati
+
+Ogni modifica a entità funzionali produce una riga di audit
+
+L’audit non è modificabile né cancellabile
+
+BLOCCO 1 — Anagrafiche base
+
+Obiettivo: gestione delle entità fondamentali per il dominio applicativo.
+
+Contenuto
+
+Clienti (CRUD)
+
+Gatti (CRUD)
+
+Associazione gatto → cliente
+
+Attributi gatto:
+
+taglia (normale / grande)
+
+gruppo fratelli (stesso cliente)
+
+Blacklist globale:
+
+gestione centralizzata
+
+warning non bloccante nei flussi
+
+Output
+
+Anagrafiche complete e utilizzabili nei flussi successivi
+
+Avvisi blacklist visibili
+
+Criteri di accettazione
+
+La presenza in blacklist genera un warning ma non blocca l’operazione
+
+Audit completo su tutte le operazioni
+
+BLOCCO 2 — Listino prezzi
+
+Obiettivo: definire la base economica per preventivi e prenotazioni.
+
+Contenuto
+
+Listino globale franchise
+
+Override prezzi per singola pensione
+
+Meccanismo di calcolo prezzi coerente
+
+Output
+
+Prezzi applicati correttamente in tutti i flussi
+
+Criteri di accettazione
+
+Override pensione prevale sul prezzo globale
+
+Audit su modifiche di listino
+
+BLOCCO 3 — Preventivi + PDF
+
+Obiettivo: generare preventivi sempre documentati e tracciabili.
+
+Contenuto
+
+Creazione preventivo
+
+Associazione clienti e gatti
+
+Selezione periodo soggiorno
+
+Calcolo prezzo
+
+Generazione obbligatoria del PDF alla creazione
+
+Salvataggio PDF in storage + riferimento DB
+
+Stati preventivo (bozza / emesso / scaduto)
+
+Output
+
+Ogni preventivo ha sempre il proprio PDF associato
+
+Criteri di accettazione
+
+Creazione preventivo = record DB + PDF
+
+PDF storici sempre recuperabili
+
+Audit completo
+
+BLOCCO 4 — Email preventivo (invio manuale)
+
+Obiettivo: inviare preventivi in modo controllato e tracciabile.
+
+Contenuto
+
+Template email globali franchise
+
+Gestione variabili dinamiche
+
+Schermata di composizione email
+
+Invio manuale con conferma esplicita dell’operatore
+
+Allegato PDF preventivo
+
+Log invio email
+
+Output
+
+Invio email percepito come manuale
+
+Storico comunicazioni completo
+
+Criteri di accettazione
+
+Nessuna email parte automaticamente
+
+Ogni invio è tracciato
+
+Template modificabili solo da Admin
+
+BLOCCO 5 — Prenotazioni e stati
+
+Obiettivo: trasformare preventivi in prenotazioni operative.
+
+Contenuto
+
+Conversione preventivo → prenotazione
+
+Workflow stati:
+
+Preventivo → Confermata → Check-in → In corso → Check-out → Chiusa
+
+Stati alternativi: Cancellata / Rimborsata / Scaduta
+
+Vincolo: conferma solo dopo caparra
+
+Output
+
+Flusso prenotazione coerente e tracciato
+
+Criteri di accettazione
+
+Prenotazione non confermabile senza caparra
+
+Storico stati sempre disponibile
+
+Audit su ogni transizione
+
+BLOCCO 6 — Vincolo centrale: gabbie a pool e disponibilità
+
+Obiettivo: prevenire overbooking tramite calcolo deterministico.
+
+Contenuto
+
+Configurazione pool per pensione (singole / doppie)
+
+Regola occupazione 4 giorni di calendario
+
+Regole doppia:
+
+2 fratelli = 1 doppia
+
+gatto grande = doppia intera
+
+singolo in doppia = doppia intera
+
+Algoritmo di disponibilità giornaliera
+
+Check atomico in fase di conferma prenotazione
+
+Output
+
+Disponibilità corretta e affidabile
+
+Criteri di accettazione
+
+Nessun overbooking senza override autorizzato
+
+Disponibilità corretta anche su casi limite
+
+Audit su tutte le operazioni rilevanti
+
+BLOCCO 7 — Forzature giornaliere
+
+Obiettivo: gestire eccezioni operative.
+
+Contenuto
+
+Forzature su singolo giorno di calendario
+
+Riduzione occupazione anche prima del check-in
+
+Motivazione obbligatoria
+
+Output
+
+Flessibilità operativa senza perdita di controllo
+
+Criteri di accettazione
+
+Forzature influenzano solo i giorni selezionati
+
+Rimozione forzatura ripristina comportamento standard
+
+Audit completo
+
+BLOCCO 8 — Appuntamenti (slot check-in / check-out)
+
+Obiettivo: organizzare flussi fisici in struttura.
+
+Contenuto
+
+Configurazione fasce orarie
+
+Slot da 30 minuti
+
+Capacità massima per slot
+
+Associazione slot a check-in/check-out
+
+Output
+
+Calendario appuntamenti per pensione
+
+Criteri di accettazione
+
+Check-in/out consentiti solo con slot valido
+
+Slot pieni non selezionabili
+
+Audit su tutte le modifiche
+
+BLOCCO 9 — Email appuntamenti e promemoria
+
+Obiettivo: ridurre no-show e carico operativo.
+
+Contenuto
+
+Email di conferma automatica
+
+Promemoria automatico 24h prima
+
+Aggiornamento promemoria su spostamento/cancellazione
+
+Output
+
+Comunicazioni automatiche affidabili
+
+Criteri di accettazione
+
+Promemoria inviato correttamente
+
+Promemoria cancellato se appuntamento cancellato
+
+Log invii email
+
+BLOCCO 10 — Check-in, soggiorno e check-out
+
+Obiettivo: gestione operativa quotidiana.
+
+Contenuto
+
+Vista “oggi in arrivo / oggi in uscita”
+
+Operazioni di check-in e check-out
+
+Aggiornamento stati prenotazione
+
+Output
+
+Flusso operativo chiaro per lo staff
+
+BLOCCO 11 — Planning e compiti
+
+Obiettivo: organizzare il lavoro dello staff.
+
+Contenuto
+
+Calendario operativo
+
+Compiti (pulizia, pappa, farmaci, foto, ecc.)
+
+Assegnazione a operatori
+
+Completamento compiti
+
+Output
+
+Tracciabilità attività giornaliere
+
+BLOCCO 12 — Audit avanzato e ripristino
+
+Obiettivo: controllo totale e recupero errori.
+
+Contenuto
+
+Vista cronologia record
+
+Confronto versioni
+
+Ripristino versione precedente (Admin/Titolare)
+
+Output
+
+Storico completo e ripristinabile
+
+BLOCCO 13 — Report e rifiniture MVP
+
+Obiettivo: consegna MVP utilizzabile in produzione.
+
+Contenuto
+
+Report base
+
+UX polishing
+
+Hardening sicurezza
+
+Nota finale
+
+Le DDL delle tabelle MySQL esistenti verranno condivise solo dopo l’allineamento sui requisiti funzionali e prima della progettazione definitiva del data model.

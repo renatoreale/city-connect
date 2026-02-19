@@ -1,0 +1,67 @@
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsNumber,
+  IsEnum,
+  IsDateString,
+  IsInt,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { DiscountType, DiscountAppliesTo } from '../entities/discount-rule.entity';
+
+export class CreateDiscountRuleDto {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsEnum(DiscountType)
+  discountType: DiscountType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  minNights?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  minCats?: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  discountValue: number;
+
+  @IsBoolean()
+  isPercentage: boolean;
+
+  @IsOptional()
+  @IsEnum(DiscountAppliesTo)
+  appliesToCategory?: DiscountAppliesTo;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isCumulative?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsDateString()
+  validFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  validTo?: string;
+}

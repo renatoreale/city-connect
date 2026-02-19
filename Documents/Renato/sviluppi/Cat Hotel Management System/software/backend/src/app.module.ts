@@ -4,10 +4,12 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 
+import { ScheduleModule } from '@nestjs/schedule';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
 
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
@@ -32,6 +34,10 @@ import { EmailModule } from './modules/email/email.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
+import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { StaffTasksModule } from './modules/staff-tasks/staff-tasks.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { HealthModule } from './modules/health/health.module';
 
 import { User } from './modules/users/entities/user.entity';
 import { UserTenant } from './modules/users/entities/user-tenant.entity';
@@ -58,6 +64,11 @@ import { BookingCat } from './modules/bookings/entities/booking-cat.entity';
 import { BookingStatusHistory } from './modules/bookings/entities/booking-status-history.entity';
 import { BookingDailyOverride } from './modules/bookings/entities/booking-daily-override.entity';
 import { Payment } from './modules/payments/entities/payment.entity';
+import { AppointmentWeeklySchedule } from './modules/appointments/entities/appointment-weekly-schedule.entity';
+import { Appointment } from './modules/appointments/entities/appointment.entity';
+import { AppointmentReminder } from './modules/appointments/entities/appointment-reminder.entity';
+import { StaffTaskType } from './modules/staff-tasks/entities/staff-task-type.entity';
+import { StaffTask } from './modules/staff-tasks/entities/staff-task.entity';
 
 import { seedDatabase } from './database/seeds/initial-seed';
 
@@ -77,13 +88,14 @@ import { seedDatabase } from './database/seeds/initial-seed';
         username: configService.get<string>('database.username'),
         password: configService.get<string>('database.password'),
         database: configService.get<string>('database.database'),
-        entities: [User, UserTenant, RefreshToken, Tenant, TenantSettings, Role, Permission, AuditLog, Client, Cat, PriceListItem, SeasonalPeriod, TenantPriceOverride, DiscountRule, Quote, QuoteLineItem, QuoteCat, EmailTemplate, EmailLog, Booking, BookingLineItem, BookingCat, BookingStatusHistory, BookingDailyOverride, Payment],
+        entities: [User, UserTenant, RefreshToken, Tenant, TenantSettings, Role, Permission, AuditLog, Client, Cat, PriceListItem, SeasonalPeriod, TenantPriceOverride, DiscountRule, Quote, QuoteLineItem, QuoteCat, EmailTemplate, EmailLog, Booking, BookingLineItem, BookingCat, BookingStatusHistory, BookingDailyOverride, Payment, AppointmentWeeklySchedule, Appointment, AppointmentReminder, StaffTaskType, StaffTask],
         synchronize: configService.get<string>('APP_ENV') === 'development',
         logging: configService.get<string>('APP_ENV') === 'development',
         charset: 'utf8mb4',
       }),
       inject: [ConfigService],
     }),
+    ScheduleModule.forRoot(),
     AuthModule,
     UsersModule,
     TenantsModule,
@@ -104,6 +116,10 @@ import { seedDatabase } from './database/seeds/initial-seed';
     BookingsModule,
     PaymentsModule,
     AvailabilityModule,
+    AppointmentsModule,
+    StaffTasksModule,
+    ReportsModule,
+    HealthModule,
   ],
   providers: [
     {
@@ -128,6 +144,7 @@ export class AppModule implements NestModule, OnModuleInit {
   constructor(private dataSource: DataSource) {}
 
   configure(consumer: MiddlewareConsumer) {
+    consumer.apply(SecurityHeadersMiddleware).forRoutes('*');
     consumer.apply(TenantMiddleware).forRoutes('*');
   }
 
