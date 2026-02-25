@@ -49,6 +49,9 @@ export class TenantSettingsService {
       sendBookingConfirmation: true,
       sendCheckInReminder: true,
       checkInReminderDays: 3,
+      taxiBaseKm: 10,
+      taxiBasePrice: 20.00,
+      taxiExtraKmPrice: 0.50,
     });
 
     return this.tenantSettingsRepository.save(settings);
@@ -152,6 +155,19 @@ export class TenantSettingsService {
       checkoutPaymentPercentage: Number(settings.checkoutPaymentPercentage),
       requireCheckinPaymentAtCheckin: settings.requireCheckinPaymentAtCheckin,
       requireCheckoutPaymentAtCheckout: settings.requireCheckoutPaymentAtCheckout,
+    };
+  }
+
+  async getTaxiConfig(tenantId: string): Promise<{
+    taxiBaseKm: number;
+    taxiBasePrice: number;
+    taxiExtraKmPrice: number;
+  }> {
+    const settings = await this.findByTenantId(tenantId);
+    return {
+      taxiBaseKm: settings.taxiBaseKm,
+      taxiBasePrice: Number(settings.taxiBasePrice),
+      taxiExtraKmPrice: Number(settings.taxiExtraKmPrice),
     };
   }
 

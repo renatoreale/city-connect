@@ -113,6 +113,10 @@ CREATE TABLE IF NOT EXISTS `tenant_settings` (
   `send_booking_confirmation`             TINYINT(1)   NOT NULL DEFAULT 1,
   `send_check_in_reminder`                TINYINT(1)   NOT NULL DEFAULT 1,
   `check_in_reminder_days`                INT          NOT NULL DEFAULT 3,
+  -- Cat taxi
+  `taxi_base_km`                          INT          NOT NULL DEFAULT 10,
+  `taxi_base_price`                       DECIMAL(10,2) NOT NULL DEFAULT 20.00,
+  `taxi_extra_km_price`                   DECIMAL(10,2) NOT NULL DEFAULT 0.50,
   `created_at`                            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`                            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -177,7 +181,9 @@ CREATE TABLE IF NOT EXISTS `clients` (
   `fiscal_code`                   VARCHAR(16)  NULL,
   `email`                         VARCHAR(255) NULL,
   `phone1`                        VARCHAR(50)  NOT NULL,
+  `phone1_label`                  VARCHAR(50)  NULL,
   `phone2`                        VARCHAR(50)  NULL,
+  `phone2_label`                  VARCHAR(50)  NULL,
   `address`                       VARCHAR(255) NULL,
   `city`                          VARCHAR(100) NULL,
   `postal_code`                   VARCHAR(10)  NULL,
@@ -214,7 +220,10 @@ CREATE TABLE IF NOT EXISTS `clients` (
   KEY `IDX_clients_tenant` (`tenant_id`),
   KEY `IDX_clients_email` (`email`),
   KEY `IDX_clients_fiscal_code` (`fiscal_code`),
-  KEY `IDX_clients_last_name` (`last_name`)
+  KEY `IDX_clients_last_name` (`last_name`),
+  -- Indici compositi per le query principali (lista + filtri + ordinamento)
+  KEY `IDX_clients_tenant_active_name` (`tenant_id`, `is_active`, `last_name`, `first_name`),
+  KEY `IDX_clients_tenant_blacklisted` (`tenant_id`, `is_blacklisted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── 10. CATS ────────────────────────────────────────────────
@@ -256,7 +265,10 @@ CREATE TABLE IF NOT EXISTS `cats` (
   PRIMARY KEY (`id`),
   KEY `IDX_cats_tenant` (`tenant_id`),
   KEY `IDX_cats_client` (`client_id`),
-  KEY `IDX_cats_sibling_group` (`sibling_group_id`)
+  KEY `IDX_cats_sibling_group` (`sibling_group_id`),
+  -- Indici compositi per lista gatti con filtro isActive
+  KEY `IDX_cats_tenant_active` (`tenant_id`, `is_active`),
+  KEY `IDX_cats_client_active` (`client_id`, `is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── 11. PRICE_LIST_ITEMS ────────────────────────────────────
@@ -267,6 +279,7 @@ CREATE TABLE IF NOT EXISTS `price_list_items` (
   `description`       TEXT          NULL,
   `category`          ENUM('accommodation','extra_service') NOT NULL DEFAULT 'accommodation',
   `unit_type`         ENUM('per_night','per_day','one_time','per_hour') NOT NULL DEFAULT 'per_night',
+  `pricing_model`     ENUM('standard','per_km','per_day_per_cat','one_time_per_cat') NULL DEFAULT 'standard',
   `base_price`        DECIMAL(10,2) NOT NULL,
   `high_season_price` DECIMAL(10,2) NULL,
   `is_active`         TINYINT(1)    NOT NULL DEFAULT 1,
@@ -431,6 +444,7 @@ CREATE TABLE IF NOT EXISTS `quote_line_items` (
   `item_name`            VARCHAR(100)  NOT NULL,
   `category`             ENUM('accommodation','extra_service') NOT NULL,
   `unit_type`            ENUM('per_night','per_day','one_time','per_hour') NOT NULL,
+  `pricing_model`        ENUM('standard','per_km','per_day_per_cat','one_time_per_cat') NULL,
   `season_type`          ENUM('high','low') NULL,
   `start_date`           DATE          NULL,
   `end_date`             DATE          NULL,
@@ -441,6 +455,7 @@ CREATE TABLE IF NOT EXISTS `quote_line_items` (
   `discount_amount`      DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `total`                DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `line_order`           INT           NOT NULL DEFAULT 0,
+  `km`                   INT           NULL COMMENT 'Km percorsi (solo per pricing_model = per_km)',
   `created_at`           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at`           TIMESTAMP     NULL,
@@ -506,6 +521,7 @@ CREATE TABLE IF NOT EXISTS `booking_line_items` (
   `item_name`            VARCHAR(100)  NOT NULL,
   `category`             ENUM('accommodation','extra_service') NOT NULL,
   `unit_type`            ENUM('per_night','per_day','one_time','per_hour') NOT NULL,
+  `pricing_model`        ENUM('standard','per_km','per_day_per_cat','one_time_per_cat') NULL,
   `season_type`          ENUM('high','low') NULL,
   `start_date`           DATE          NULL,
   `end_date`             DATE          NULL,
@@ -517,6 +533,7 @@ CREATE TABLE IF NOT EXISTS `booking_line_items` (
   `total`                DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `line_order`           INT           NOT NULL DEFAULT 0,
   `added_during_stay`    TINYINT(1)    NOT NULL DEFAULT 0,
+  `km`                   INT           NULL COMMENT 'Km percorsi (solo per pricing_model = per_km)',
   `created_at`           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at`           TIMESTAMP     NULL,
@@ -833,18 +850,40 @@ ALTER TABLE `staff_tasks`
 
 SET FOREIGN_KEY_CHECKS = 1;
 
+-- ============================================================
+-- MIGRATION: pricing_model (eseguire su DB esistenti)
+-- ============================================================
+-- ALTER TABLE `price_list_items`
+--   ADD COLUMN `pricing_model` ENUM('standard','per_km','per_day_per_cat','one_time_per_cat')
+--   NULL DEFAULT 'standard' AFTER `unit_type`;
+-- ALTER TABLE `quote_line_items`
+--   ADD COLUMN `pricing_model` ENUM('standard','per_km','per_day_per_cat','one_time_per_cat')
+--   NULL AFTER `unit_type`;
+-- ALTER TABLE `booking_line_items`
+--   ADD COLUMN `pricing_model` ENUM('standard','per_km','per_day_per_cat','one_time_per_cat')
+--   NULL AFTER `unit_type`;
+
 
 -- ============================================================
 -- DATI INIZIALI (seed)
 -- ============================================================
 
+-- UUID fissi per poter creare i riferimenti nel seed
+SET @role_admin_id    = '10000000-0000-0000-0000-000000000001';
+SET @role_ceo_id      = '10000000-0000-0000-0000-000000000002';
+SET @role_titolare_id = '10000000-0000-0000-0000-000000000003';
+SET @role_manager_id  = '10000000-0000-0000-0000-000000000004';
+SET @role_op_id       = '10000000-0000-0000-0000-000000000005';
+SET @admin_user_id    = '20000000-0000-0000-0000-000000000001';
+SET @demo_tenant_id   = '30000000-0000-0000-0000-000000000001';
+
 -- ─── Ruoli ───────────────────────────────────────────────────
 INSERT IGNORE INTO `roles` (`id`, `code`, `name`, `description`, `is_global`, `hierarchy`) VALUES
-  (UUID(), 'admin',     'Amministratore', 'Accesso globale a tutte le pensioni',  1, 100),
-  (UUID(), 'ceo',       'CEO',            'CEO / responsabile principale',        0,  90),
-  (UUID(), 'titolare',  'Titolare',       'Titolare della pensione',             0,  70),
-  (UUID(), 'manager',   'Manager',        'Manager operativo',                   0,  50),
-  (UUID(), 'operatore', 'Operatore',      'Operatore standard',                  0,  30);
+  (@role_admin_id,    'admin',     'Amministratore', 'Accesso globale a tutte le pensioni',  1, 100),
+  (@role_ceo_id,      'ceo',       'CEO',            'CEO / responsabile principale',        0,  90),
+  (@role_titolare_id, 'titolare',  'Titolare',       'Titolare della pensione',             0,  70),
+  (@role_manager_id,  'manager',   'Manager',        'Manager operativo',                   0,  50),
+  (@role_op_id,       'operatore', 'Operatore',      'Operatore standard',                  0,  30);
 
 -- ─── Listino prezzi base ──────────────────────────────────────
 INSERT IGNORE INTO `price_list_items`
@@ -856,13 +895,17 @@ VALUES
   (UUID(), 'EXTRA_MEDICAZIONE',  'Somministrazione farmaci', 'extra_service',  'per_day',    3.00, NULL,  1, 11),
   (UUID(), 'EXTRA_TRASPORTO',    'Servizio trasporto',       'extra_service',  'one_time',  20.00, NULL,  1, 12);
 
+-- ─── Tenant di demo ───────────────────────────────────────────
+INSERT IGNORE INTO `tenants` (`id`, `name`, `code`, `is_active`) VALUES
+  (@demo_tenant_id, 'Demo Cat Hotel', 'demo', 1);
+
 -- ─── Utente admin iniziale ────────────────────────────────────
 -- Password: Admin1234! (bcrypt, rounds=12)
 -- CAMBIA QUESTA PASSWORD AL PRIMO ACCESSO
 INSERT IGNORE INTO `users`
   (`id`, `email`, `password`, `first_name`, `last_name`, `is_active`, `is_global_user`)
 VALUES (
-  UUID(),
+  @admin_user_id,
   'admin@cathotel.local',
   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBpj0A3H4k9b8K',
   'Admin',
@@ -870,3 +913,7 @@ VALUES (
   1,
   1
 );
+
+-- ─── Associazione admin → tenant di demo ─────────────────────
+INSERT IGNORE INTO `user_tenants` (`id`, `user_id`, `tenant_id`, `role_id`, `is_active`)
+VALUES (UUID(), @admin_user_id, @demo_tenant_id, @role_admin_id, 1);

@@ -11,7 +11,7 @@ import { QuoteLineItem, LineItemCategory, LineItemUnitType, LineItemSeasonType }
 import { QuoteCat } from './entities/quote-cat.entity';
 import { CreateQuoteDto, UpdateQuoteDto, AddLineItemDto, UpdateLineItemDto, UpdateStatusDto } from './dto';
 import { PriceListService } from '../price-list/price-list.service';
-import { PriceListItem, PriceListCategory, PriceListUnitType } from '../price-list/entities/price-list-item.entity';
+import { PriceListItem, PriceListCategory, PriceListUnitType, ExtraServicePricingModel } from '../price-list/entities/price-list-item.entity';
 import { TenantPriceOverridesService } from '../tenant-price-overrides/tenant-price-overrides.service';
 import { TenantPriceOverride } from '../tenant-price-overrides/entities/tenant-price-override.entity';
 import { SeasonalPeriodsService } from '../seasonal-periods/seasonal-periods.service';
@@ -19,12 +19,13 @@ import { DiscountRulesService } from '../discount-rules/discount-rules.service';
 import { DiscountRule } from '../discount-rules/entities/discount-rule.entity';
 import { CatsService } from '../cats/cats.service';
 import { PdfService } from '../pdf/pdf.service';
+import { TenantSettingsService } from '../tenants/tenant-settings.service';
 
 interface SeasonalSegment {
   startDate: Date;
   endDate: Date;
   seasonType: 'high' | 'low';
-  nights: number;
+  days: number;
 }
 
 @Injectable()
@@ -42,6 +43,7 @@ export class QuotesService {
     private readonly discountRulesService: DiscountRulesService,
     private readonly catsService: CatsService,
     private readonly pdfService: PdfService,
+    private readonly tenantSettingsService: TenantSettingsService,
     private dataSource: DataSource,
   ) {}
 
@@ -96,49 +98,83 @@ export class QuotesService {
       await this.quoteCatRepository.save(quoteCat);
     }
 
-    // Get accommodation item
-    let accommodationItem: PriceListItem;
-    if (createDto.accommodationItemCode) {
-      accommodationItem = await this.priceListService.findByCode(createDto.accommodationItemCode);
-    } else {
-      const accommodationItems = await this.priceListService.findActiveByCategory(PriceListCategory.ACCOMMODATION);
-      if (accommodationItems.length === 0) {
-        throw new BadRequestException('Nessun item di soggiorno attivo nel listino');
-      }
-      accommodationItem = accommodationItems[0];
-    }
-
-    // Calculate seasonal segments and create accommodation line items
-    const segments = await this.calculateSeasonalSegments(checkIn, checkOut);
     let lineOrder = 0;
 
-    for (const segment of segments) {
-      const unitPrice = this.getItemPrice(accommodationItem, segment.seasonType === 'high', overridesMap);
-      const quantity = segment.nights;
-      const subtotal = unitPrice * quantity * numberOfCats;
+    if (createDto.accommodationSegments && createDto.accommodationSegments.length > 0) {
+      // Manual segments provided: use them directly
+      for (const seg of createDto.accommodationSegments) {
+        const item = await this.priceListService.findByCode(seg.itemCode);
+        const isHigh = seg.seasonType === 'high';
+        const unitPrice = this.getItemPrice(item, isHigh, overridesMap);
+        const segStart = new Date(seg.startDate);
+        const segEnd = new Date(seg.endDate);
+        const quantity =
+          Math.ceil((segEnd.getTime() - segStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const subtotal = unitPrice * quantity * numberOfCats;
 
-      const lineItem = this.lineItemRepository.create({
-        quoteId: savedQuote.id,
-        priceListItemId: accommodationItem.id,
-        itemCode: accommodationItem.code,
-        itemName: accommodationItem.name,
-        category: LineItemCategory.ACCOMMODATION,
-        unitType: this.mapUnitType(accommodationItem.unitType),
-        seasonType: segment.seasonType === 'high' ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
-        startDate: segment.startDate,
-        endDate: segment.endDate,
-        appliesToCatCount: null, // Applies to all cats
-        unitPrice,
-        quantity,
-        subtotal,
-        discountAmount: 0,
-        total: subtotal,
-        lineOrder: lineOrder++,
-        createdBy: userId,
-        updatedBy: userId,
-      });
+        const lineItem = this.lineItemRepository.create({
+          quoteId: savedQuote.id,
+          priceListItemId: item.id,
+          itemCode: item.code,
+          itemName: item.name,
+          category: LineItemCategory.ACCOMMODATION,
+          unitType: this.mapUnitType(item.unitType),
+          seasonType: isHigh ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
+          startDate: segStart,
+          endDate: segEnd,
+          appliesToCatCount: null,
+          unitPrice,
+          quantity,
+          subtotal,
+          discountAmount: 0,
+          total: subtotal,
+          lineOrder: lineOrder++,
+          createdBy: userId,
+          updatedBy: userId,
+        });
+        await this.lineItemRepository.save(lineItem);
+      }
+    } else {
+      // Auto-calculate seasonal segments from price list
+      let accommodationItem: PriceListItem;
+      if (createDto.accommodationItemCode) {
+        accommodationItem = await this.priceListService.findByCode(createDto.accommodationItemCode);
+      } else {
+        const accommodationItems = await this.priceListService.findActiveByCategory(PriceListCategory.ACCOMMODATION);
+        if (accommodationItems.length === 0) {
+          throw new BadRequestException('Nessun item di soggiorno attivo nel listino');
+        }
+        accommodationItem = accommodationItems[0];
+      }
 
-      await this.lineItemRepository.save(lineItem);
+      const segments = await this.calculateSeasonalSegments(checkIn, checkOut);
+      for (const segment of segments) {
+        const unitPrice = this.getItemPrice(accommodationItem, segment.seasonType === 'high', overridesMap);
+        const quantity = segment.days;
+        const subtotal = unitPrice * quantity * numberOfCats;
+
+        const lineItem = this.lineItemRepository.create({
+          quoteId: savedQuote.id,
+          priceListItemId: accommodationItem.id,
+          itemCode: accommodationItem.code,
+          itemName: accommodationItem.name,
+          category: LineItemCategory.ACCOMMODATION,
+          unitType: this.mapUnitType(accommodationItem.unitType),
+          seasonType: segment.seasonType === 'high' ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
+          startDate: segment.startDate,
+          endDate: segment.endDate,
+          appliesToCatCount: null,
+          unitPrice,
+          quantity,
+          subtotal,
+          discountAmount: 0,
+          total: subtotal,
+          lineOrder: lineOrder++,
+          createdBy: userId,
+          updatedBy: userId,
+        });
+        await this.lineItemRepository.save(lineItem);
+      }
     }
 
     // Add extra services if provided
@@ -146,10 +182,26 @@ export class QuotesService {
       for (const extraService of createDto.extraServices) {
         const item = await this.priceListService.findByCode(extraService.itemCode);
         const isHighSeason = await this.seasonalService.isHighSeason(checkIn);
-        const unitPrice = this.getItemPrice(item, isHighSeason, overridesMap);
-        const quantity = extraService.quantity || 1;
+        const pricingModel = item.pricingModel;
+        let unitPrice = this.getItemPrice(item, isHighSeason, overridesMap);
+        let lineKm: number | null = null;
+        let quantity: number;
+
+        if (pricingModel === ExtraServicePricingModel.PER_KM) {
+          const km = extraService.km || 1;
+          lineKm = km;
+          unitPrice = extraService.unitPrice !== undefined
+            ? extraService.unitPrice
+            : await this.calculateTaxiFare(tenantId, km);
+          quantity = 1;
+        } else if (pricingModel === ExtraServicePricingModel.ONE_TIME_PER_CAT) {
+          quantity = 1;
+        } else {
+          quantity = extraService.quantity || 1;
+        }
+
         const catCount = extraService.appliesToCatCount || numberOfCats;
-        const subtotal = unitPrice * quantity * catCount;
+        const subtotal = this.calculateExtraSubtotal(pricingModel, unitPrice, quantity, catCount);
 
         const lineItem = this.lineItemRepository.create({
           quoteId: savedQuote.id,
@@ -158,6 +210,7 @@ export class QuotesService {
           itemName: item.name,
           category: LineItemCategory.EXTRA_SERVICE,
           unitType: this.mapUnitType(item.unitType),
+          pricingModel: pricingModel || null,
           seasonType: isHighSeason ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
           startDate: null,
           endDate: null,
@@ -168,6 +221,7 @@ export class QuotesService {
           discountAmount: 0,
           total: subtotal,
           lineOrder: lineOrder++,
+          km: lineKm,
           createdBy: userId,
           updatedBy: userId,
         });
@@ -264,8 +318,9 @@ export class QuotesService {
       quote.validUntil = new Date(updateDto.validUntil);
     }
 
-    // If dates or cats changed, need to recalculate
-    let needsRecalculation = false;
+    // Track what actually changed to avoid wiping manual segment edits
+    let datesChanged = false;
+    let catCountChanged = false;
 
     if (updateDto.checkInDate || updateDto.checkOutDate) {
       const newCheckIn = updateDto.checkInDate ? new Date(updateDto.checkInDate) : quote.checkInDate;
@@ -275,9 +330,24 @@ export class QuotesService {
         throw new BadRequestException('La data di check-out deve essere successiva al check-in');
       }
 
+      // Compare as date strings to detect actual changes (avoids timezone issues)
+      const oldCheckInStr = (typeof quote.checkInDate === 'string'
+        ? quote.checkInDate
+        : (quote.checkInDate as Date).toISOString()
+      ).substring(0, 10);
+      const oldCheckOutStr = (typeof quote.checkOutDate === 'string'
+        ? quote.checkOutDate
+        : (quote.checkOutDate as Date).toISOString()
+      ).substring(0, 10);
+      const newCheckInStr = updateDto.checkInDate ?? oldCheckInStr;
+      const newCheckOutStr = updateDto.checkOutDate ?? oldCheckOutStr;
+
       quote.checkInDate = newCheckIn;
       quote.checkOutDate = newCheckOut;
-      needsRecalculation = true;
+
+      if (newCheckInStr !== oldCheckInStr || newCheckOutStr !== oldCheckOutStr) {
+        datesChanged = true;
+      }
     }
 
     if (updateDto.catIds) {
@@ -298,15 +368,24 @@ export class QuotesService {
         await this.quoteCatRepository.save(quoteCat);
       }
 
+      if (updateDto.catIds.length !== quote.numberOfCats) {
+        catCountChanged = true;
+      }
       quote.numberOfCats = updateDto.catIds.length;
-      needsRecalculation = true;
     }
 
-    quote.updatedBy = userId;
-    await this.quoteRepository.save(quote);
+    await this.quoteRepository.update(quote.id, {
+      clientId: quote.clientId,
+      notes: quote.notes ?? null,
+      validUntil: quote.validUntil ?? null,
+      checkInDate: quote.checkInDate,
+      checkOutDate: quote.checkOutDate,
+      numberOfCats: quote.numberOfCats,
+      updatedBy: userId,
+    });
 
-    if (needsRecalculation) {
-      // Remove existing accommodation line items and recalculate
+    if (datesChanged) {
+      // Dates changed: delete accommodation segments and auto-recalculate from seasonal periods
       await this.lineItemRepository.delete({
         quoteId: quote.id,
         category: LineItemCategory.ACCOMMODATION,
@@ -322,7 +401,7 @@ export class QuotesService {
         let lineOrder = 0;
         for (const segment of segments) {
           const unitPrice = this.getItemPrice(accommodationItem, segment.seasonType === 'high', overridesMap);
-          const quantity = segment.nights;
+          const quantity = segment.days;
           const subtotal = unitPrice * quantity * quote.numberOfCats;
 
           const lineItem = this.lineItemRepository.create({
@@ -349,22 +428,36 @@ export class QuotesService {
           await this.lineItemRepository.save(lineItem);
         }
       }
+    } else if (catCountChanged) {
+      // Only cat count changed: update subtotals of existing accommodation items without deleting them
+      const existingAccomItems = await this.lineItemRepository.find({
+        where: { quoteId: quote.id, category: LineItemCategory.ACCOMMODATION },
+      });
+      for (const item of existingAccomItems) {
+        item.subtotal = Number(item.unitPrice) * item.quantity * quote.numberOfCats;
+        item.total = item.subtotal - Number(item.discountAmount);
+        item.updatedBy = userId;
+        await this.lineItemRepository.save(item);
+      }
+    }
 
-      // Recalculate extra services for new cat count
+    if (datesChanged || catCountChanged) {
+      // Recalculate extra services for new cat count / dates
       const extraServices = await this.lineItemRepository.find({
         where: { quoteId: quote.id, category: LineItemCategory.EXTRA_SERVICE },
       });
 
       for (const service of extraServices) {
         const catCount = service.appliesToCatCount || quote.numberOfCats;
-        service.subtotal = Number(service.unitPrice) * service.quantity * catCount;
+        service.subtotal = this.calculateExtraSubtotal(service.pricingModel, Number(service.unitPrice), service.quantity, catCount);
         service.total = service.subtotal - Number(service.discountAmount);
         service.updatedBy = userId;
         await this.lineItemRepository.save(service);
       }
-
-      await this.recalculateTotals(quote.id, tenantId, userId);
     }
+
+    // Always recalculate totals to reflect any segment additions/removals made before saving
+    await this.recalculateTotals(quote.id, tenantId, userId);
 
     return this.findById(id, tenantId);
   }
@@ -388,11 +481,50 @@ export class QuotesService {
 
     const item = await this.priceListService.findByCode(addDto.itemCode);
     const overridesMap = await this.overridesService.getActiveOverridesMap(tenantId);
-    const isHighSeason = await this.seasonalService.isHighSeason(quote.checkInDate);
-    const unitPrice = this.getItemPrice(item, isHighSeason, overridesMap);
-    const quantity = addDto.quantity || 1;
+
+    // Determine season type: manual override or auto-detect
+    let resolvedSeasonType: boolean;
+    if (addDto.seasonType) {
+      resolvedSeasonType = addDto.seasonType === 'high';
+    } else {
+      resolvedSeasonType = await this.seasonalService.isHighSeason(
+        new Date(addDto.startDate ?? quote.checkInDate),
+      );
+    }
+
+    const pricingModel = item.pricingModel;
+    let unitPrice = this.getItemPrice(item, resolvedSeasonType, overridesMap);
+    let lineKm: number | null = null;
+
+    // Determine quantity and unit price based on pricing model
+    let quantity: number;
+    let segmentStart: Date | null = null;
+    let segmentEnd: Date | null = null;
+
+    if (pricingModel === ExtraServicePricingModel.PER_KM) {
+      const km = addDto.km || 1;
+      lineKm = km;
+      // Calcolo tariffa a scaglioni (o override manuale)
+      if (addDto.unitPrice !== undefined) {
+        unitPrice = addDto.unitPrice;
+      } else {
+        unitPrice = await this.calculateTaxiFare(tenantId, km);
+      }
+      quantity = 1; // Il prezzo è già il totale della corsa
+    } else if (addDto.startDate && addDto.endDate) {
+      segmentStart = new Date(addDto.startDate);
+      segmentEnd = new Date(addDto.endDate);
+      quantity = Math.ceil(
+        (segmentEnd.getTime() - segmentStart.getTime()) / (1000 * 60 * 60 * 24),
+      ) + 1;
+    } else if (pricingModel === ExtraServicePricingModel.ONE_TIME_PER_CAT) {
+      quantity = 1;
+    } else {
+      quantity = addDto.quantity || 1;
+    }
+
     const catCount = addDto.appliesToCatCount || quote.numberOfCats;
-    const subtotal = unitPrice * quantity * catCount;
+    const subtotal = this.calculateExtraSubtotal(pricingModel, unitPrice, quantity, catCount);
 
     // Get max line order
     const maxOrder = await this.lineItemRepository
@@ -410,9 +542,10 @@ export class QuotesService {
         ? LineItemCategory.ACCOMMODATION
         : LineItemCategory.EXTRA_SERVICE,
       unitType: this.mapUnitType(item.unitType),
-      seasonType: isHighSeason ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
-      startDate: null,
-      endDate: null,
+      pricingModel: pricingModel || null,
+      seasonType: resolvedSeasonType ? LineItemSeasonType.HIGH : LineItemSeasonType.LOW,
+      startDate: segmentStart,
+      endDate: segmentEnd,
       appliesToCatCount: addDto.appliesToCatCount || null,
       unitPrice,
       quantity,
@@ -420,6 +553,7 @@ export class QuotesService {
       discountAmount: 0,
       total: subtotal,
       lineOrder: (maxOrder?.maxOrder || 0) + 1,
+      km: lineKm,
       createdBy: userId,
       updatedBy: userId,
     });
@@ -461,7 +595,7 @@ export class QuotesService {
 
     // Recalculate subtotal
     const catCount = lineItem.appliesToCatCount || quote.numberOfCats;
-    lineItem.subtotal = Number(lineItem.unitPrice) * lineItem.quantity * catCount;
+    lineItem.subtotal = this.calculateExtraSubtotal(lineItem.pricingModel, Number(lineItem.unitPrice), lineItem.quantity, catCount);
     lineItem.total = lineItem.subtotal - Number(lineItem.discountAmount);
     lineItem.updatedBy = userId;
 
@@ -520,7 +654,7 @@ export class QuotesService {
 
           lineItem.unitPrice = newUnitPrice;
           const catCount = lineItem.appliesToCatCount || quote.numberOfCats;
-          lineItem.subtotal = newUnitPrice * lineItem.quantity * catCount;
+          lineItem.subtotal = this.calculateExtraSubtotal(lineItem.pricingModel, newUnitPrice, lineItem.quantity, catCount);
           lineItem.total = lineItem.subtotal - Number(lineItem.discountAmount);
           lineItem.updatedBy = userId;
 
@@ -634,37 +768,37 @@ export class QuotesService {
     let currentDate = new Date(checkIn);
     let segmentStart = new Date(checkIn);
     let currentSeasonType = await this.seasonalService.getSeasonType(currentDate);
-    let nightCount = 0;
+    let dayCount = 0;
 
-    while (currentDate < checkOut) {
+    while (currentDate <= checkOut) {
       const daySeasonType = await this.seasonalService.getSeasonType(currentDate);
 
-      if (daySeasonType !== currentSeasonType && nightCount > 0) {
+      if (daySeasonType !== currentSeasonType && dayCount > 0) {
         // Season changed, close current segment
         segments.push({
           startDate: new Date(segmentStart),
           endDate: new Date(currentDate),
           seasonType: currentSeasonType,
-          nights: nightCount,
+          days: dayCount,
         });
 
         // Start new segment
         segmentStart = new Date(currentDate);
         currentSeasonType = daySeasonType;
-        nightCount = 0;
+        dayCount = 0;
       }
 
-      nightCount++;
+      dayCount++;
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
     // Close the last segment
-    if (nightCount > 0) {
+    if (dayCount > 0) {
       segments.push({
         startDate: new Date(segmentStart),
         endDate: new Date(checkOut),
         seasonType: currentSeasonType,
-        nights: nightCount,
+        days: dayCount,
       });
     }
 
@@ -699,6 +833,35 @@ export class QuotesService {
     return Number(item.basePrice);
   }
 
+  private calculateExtraSubtotal(
+    pricingModel: ExtraServicePricingModel | null | undefined,
+    unitPrice: number,
+    quantity: number,
+    catCount: number,
+  ): number {
+    switch (pricingModel) {
+      case ExtraServicePricingModel.PER_KM:
+        return unitPrice * quantity;
+      case ExtraServicePricingModel.ONE_TIME_PER_CAT:
+        return unitPrice * catCount;
+      case ExtraServicePricingModel.PER_DAY_PER_CAT:
+      case ExtraServicePricingModel.STANDARD:
+      default:
+        return unitPrice * quantity * catCount;
+    }
+  }
+
+  private async calculateTaxiFare(
+    tenantId: string,
+    km: number,
+  ): Promise<number> {
+    const config = await this.tenantSettingsService.getTaxiConfig(tenantId);
+    if (km <= config.taxiBaseKm) {
+      return config.taxiBasePrice;
+    }
+    return config.taxiBasePrice + (km - config.taxiBaseKm) * config.taxiExtraKmPrice;
+  }
+
   private mapUnitType(priceListUnitType: PriceListUnitType): LineItemUnitType {
     const mapping: Record<PriceListUnitType, LineItemUnitType> = {
       [PriceListUnitType.PER_NIGHT]: LineItemUnitType.PER_NIGHT,
@@ -723,9 +886,9 @@ export class QuotesService {
 
     const checkIn = new Date(quote.checkInDate);
     const checkOut = new Date(quote.checkOutDate);
-    const numberOfNights = Math.ceil(
+    const numberOfDays = Math.ceil(
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
-    );
+    ) + 1;
 
     // Calculate subtotal before discounts
     let subtotalBeforeDiscounts = 0;
@@ -737,7 +900,7 @@ export class QuotesService {
     const accommodationRules = await this.discountRulesService.getApplicableRules(
       tenantId,
       PriceListCategory.ACCOMMODATION,
-      numberOfNights,
+      numberOfDays,
       quote.numberOfCats,
       checkIn,
     );
@@ -745,7 +908,7 @@ export class QuotesService {
     const extraServiceRules = await this.discountRulesService.getApplicableRules(
       tenantId,
       PriceListCategory.EXTRA_SERVICE,
-      numberOfNights,
+      numberOfDays,
       quote.numberOfCats,
       checkIn,
     );

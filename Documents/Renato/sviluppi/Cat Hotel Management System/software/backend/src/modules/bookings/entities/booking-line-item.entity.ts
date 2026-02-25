@@ -6,7 +6,7 @@ import {
 } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Booking } from './booking.entity';
-import { PriceListItem } from '../../price-list/entities/price-list-item.entity';
+import { PriceListItem, ExtraServicePricingModel } from '../../price-list/entities/price-list-item.entity';
 
 export enum LineItemSeasonType {
   HIGH = 'high',
@@ -59,6 +59,14 @@ export class BookingLineItem extends BaseEntity {
     enum: LineItemUnitType,
   })
   unitType: LineItemUnitType;
+
+  @Column({
+    name: 'pricing_model',
+    type: 'enum',
+    enum: ExtraServicePricingModel,
+    nullable: true,
+  })
+  pricingModel: ExtraServicePricingModel | null;
 
   @Column({
     name: 'season_type',
@@ -119,4 +127,8 @@ export class BookingLineItem extends BaseEntity {
   // Flag per extra aggiunti dopo la conversione
   @Column({ name: 'added_during_stay', type: 'boolean', default: false })
   addedDuringStay: boolean;
+
+  // Km percorsi (solo per pricingModel = per_km)
+  @Column({ type: 'int', nullable: true })
+  km: number | null;
 }

@@ -101,6 +101,16 @@ export class TenantSettings {
   @Column({ name: 'check_in_reminder_days', type: 'int', default: 3 })
   checkInReminderDays: number;
 
+  // Configurazioni cat taxi
+  @Column({ name: 'taxi_base_km', type: 'int', default: 10 })
+  taxiBaseKm: number;
+
+  @Column({ name: 'taxi_base_price', type: 'decimal', precision: 10, scale: 2, default: 20.00 })
+  taxiBasePrice: number;
+
+  @Column({ name: 'taxi_extra_km_price', type: 'decimal', precision: 10, scale: 2, default: 0.50 })
+  taxiExtraKmPrice: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

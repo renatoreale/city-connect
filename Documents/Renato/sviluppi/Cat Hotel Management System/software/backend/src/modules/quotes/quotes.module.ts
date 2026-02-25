@@ -12,6 +12,7 @@ import { DiscountRulesModule } from '../discount-rules/discount-rules.module';
 import { CatsModule } from '../cats/cats.module';
 import { PdfModule } from '../pdf/pdf.module';
 import { EmailModule } from '../email/email.module';
+import { TenantSettingsModule } from '../tenants/tenant-settings.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EmailModule } from '../email/email.module';
     CatsModule,
     PdfModule,
     EmailModule,
+    TenantSettingsModule,
   ],
   controllers: [QuotesController],
   providers: [QuotesService],

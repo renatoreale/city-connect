@@ -75,4 +75,10 @@ export class TenantSettingsController {
   async getNotificationConfig(@CurrentTenant() tenantId: string) {
     return this.tenantSettingsService.getNotificationConfig(tenantId);
   }
+
+  @Get('taxi')
+  @Roles(RoleType.ADMIN, RoleType.CEO, RoleType.TITOLARE, RoleType.MANAGER, RoleType.OPERATORE)
+  async getTaxiConfig(@CurrentTenant() tenantId: string) {
+    return this.tenantSettingsService.getTaxiConfig(tenantId);
+  }
 }

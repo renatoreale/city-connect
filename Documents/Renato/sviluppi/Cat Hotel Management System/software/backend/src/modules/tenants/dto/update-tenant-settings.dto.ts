@@ -130,4 +130,20 @@ export class UpdateTenantSettingsDto {
   @IsNumber()
   @Min(1)
   checkInReminderDays?: number;
+
+  // Configurazioni cat taxi
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  taxiBaseKm?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxiBasePrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxiExtraKmPrice?: number;
 }

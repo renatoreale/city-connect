@@ -5,12 +5,29 @@ import {
   IsArray,
   IsOptional,
   IsInt,
+  IsNumber,
   Min,
   MaxLength,
   ValidateNested,
   ArrayMinSize,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class AccommodationSegmentDto {
+  @IsString()
+  @MaxLength(50)
+  itemCode: string;
+
+  @IsDateString()
+  startDate: string;
+
+  @IsDateString()
+  endDate: string;
+
+  @IsIn(['high', 'low'])
+  seasonType: 'high' | 'low';
+}
 
 export class ExtraServiceDto {
   @IsString()
@@ -26,6 +43,16 @@ export class ExtraServiceDto {
   @IsInt()
   @Min(1)
   appliesToCatCount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  km?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  unitPrice?: number;
 }
 
 export class CreateQuoteDto {
@@ -51,6 +78,12 @@ export class CreateQuoteDto {
   @IsString()
   @MaxLength(50)
   accommodationItemCode?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AccommodationSegmentDto)
+  accommodationSegments?: AccommodationSegmentDto[];
 
   @IsOptional()
   @IsArray()
