@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { Check } from 'lucide-react';
+import { Check, ChevronRight, ListOrdered } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/Checkbox';
@@ -590,6 +591,7 @@ function CatTaxiSection({ settings }: { settings: TenantSettings }) {
 
 export function SettingsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const {
     data: settings,
@@ -640,6 +642,23 @@ export function SettingsPage() {
       <PagamentiOperativiSection settings={settings} />
       <NotificheSection settings={settings} />
       <CatTaxiSection settings={settings} />
+
+      {/* Link to price list */}
+      <button
+        onClick={() => navigate('/settings/price-list')}
+        className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border border-sage-200 shadow-sm hover:border-sage-400 hover:shadow-md transition-all text-left group"
+      >
+        <div className="w-10 h-10 rounded-lg bg-sage-100 flex items-center justify-center shrink-0">
+          <ListOrdered className="w-5 h-5 text-sage-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-800">Listino Prezzi</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Gestisci le voci di alloggio e i servizi extra — incluso il modello <strong>Per km</strong> per il Cat Taxi
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-sage-600 shrink-0 transition-colors" />
+      </button>
     </div>
   );
 }

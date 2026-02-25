@@ -12,6 +12,7 @@ import { QuoteDetailPage } from '@/pages/quotes/QuoteDetailPage';
 import { BookingsPage } from '@/pages/bookings/BookingsPage';
 import { BookingDetailPage } from '@/pages/bookings/BookingDetailPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { PriceListPage } from '@/pages/settings/PriceListPage';
 
 export function App() {
   return (
@@ -42,6 +43,7 @@ export function App() {
           <Route path="/payments" element={<ComingSoon label="Pagamenti" />} />
           <Route path="/reports" element={<ComingSoon label="Report" />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/price-list" element={<PriceListPage />} />
           <Route path="*" element={<Navigate to="/clients" replace />} />
         </Route>
       </Routes>
