@@ -6,6 +6,12 @@ import { ClientDetailPage } from '@/pages/clients/ClientDetailPage';
 import { ClientFormPage } from '@/pages/clients/ClientFormPage';
 import { CatsPage } from '@/pages/cats/CatsPage';
 import { CatFormPage } from '@/pages/cats/CatFormPage';
+import { QuotesPage } from '@/pages/quotes/QuotesPage';
+import { QuoteFormPage } from '@/pages/quotes/QuoteFormPage';
+import { QuoteDetailPage } from '@/pages/quotes/QuoteDetailPage';
+import { BookingsPage } from '@/pages/bookings/BookingsPage';
+import { BookingDetailPage } from '@/pages/bookings/BookingDetailPage';
+import { SettingsPage } from '@/pages/settings/SettingsPage';
 
 export function App() {
   return (
@@ -24,13 +30,18 @@ export function App() {
           <Route path="/cats" element={<CatsPage />} />
           <Route path="/cats/new" element={<CatFormPage />} />
           <Route path="/cats/:id/edit" element={<CatFormPage />} />
+          <Route path="/quotes" element={<QuotesPage />} />
+          <Route path="/quotes/new" element={<QuoteFormPage />} />
+          <Route path="/quotes/:id" element={<QuoteDetailPage />} />
+          <Route path="/quotes/:id/edit" element={<QuoteFormPage />} />
+          <Route path="/bookings" element={<BookingsPage />} />
+          <Route path="/bookings/:id" element={<BookingDetailPage />} />
           {/* Placeholder routes for future blocks */}
-          <Route path="/bookings" element={<ComingSoon label="Prenotazioni" />} />
           <Route path="/appointments" element={<ComingSoon label="Appuntamenti" />} />
           <Route path="/tasks" element={<ComingSoon label="Compiti" />} />
           <Route path="/payments" element={<ComingSoon label="Pagamenti" />} />
           <Route path="/reports" element={<ComingSoon label="Report" />} />
-          <Route path="/settings" element={<ComingSoon label="Impostazioni" />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/clients" replace />} />
         </Route>
       </Routes>
