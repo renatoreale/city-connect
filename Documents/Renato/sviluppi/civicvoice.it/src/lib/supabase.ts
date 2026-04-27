@@ -1,0 +1,18 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Variabili VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY non configurate nel file .env"
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const supabase = createClient<any>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
