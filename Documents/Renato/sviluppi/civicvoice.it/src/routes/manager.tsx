@@ -139,7 +139,7 @@ function ManagerPage() {
       await fetchData();
       setEdits((prev) => { const next = { ...prev }; delete next[report.id]; return next; });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Errore nel salvataggio.");
+      toast.error((err as { message?: string })?.message ?? "Errore nel salvataggio.");
     } finally {
       setSaving((prev) => ({ ...prev, [report.id]: false }));
     }

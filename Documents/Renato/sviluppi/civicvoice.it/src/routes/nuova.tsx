@@ -113,7 +113,9 @@ function NewReportPage() {
       navigate({ to: "/login" });
       return;
     }
-    if (profile && !profile.profile_completed) {
+    // Aspetta che il profilo sia caricato prima di decidere
+    if (profile === null) return;
+    if (!profile.profile_completed) {
       toast.warning("Completa il profilo prima di inviare segnalazioni.");
       navigate({ to: "/registrazione" });
       return;
@@ -283,7 +285,10 @@ function NewReportPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigate({ to: "/mie-segnalazioni" as any });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Errore nell'invio.";
+      // PostgrestError non estende Error: leggiamo .message direttamente
+      const msg =
+        (err as { message?: string })?.message ?? "Errore nell'invio della segnalazione.";
+      console.error("Errore segnalazione:", err);
       toast.error(msg);
     } finally {
       setSubmitting(false);

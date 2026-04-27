@@ -122,7 +122,7 @@ function SignupPage() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigate({ to: "/mie-segnalazioni" as any });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Errore durante la registrazione.";
+      const msg = (err as { message?: string })?.message ?? "Errore durante la registrazione.";
       if (msg.includes("User already registered")) {
         toast.error("Email già registrata. Prova ad accedere.");
       } else {
