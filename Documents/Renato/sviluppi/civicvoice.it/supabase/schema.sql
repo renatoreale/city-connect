@@ -453,20 +453,5 @@ BEGIN
 END;
 $$;
 
--- ============================================================
--- STORAGE: bucket report-photos
--- Eseguire separatamente nella sezione Storage > Buckets
--- ============================================================
--- INSERT INTO storage.buckets (id, name, public) VALUES ('report-photos', 'report-photos', false);
-
--- Storage RLS (da eseguire dopo aver creato il bucket)
--- CREATE POLICY "report-photos: citizen carica" ON storage.objects FOR INSERT
---   WITH CHECK (bucket_id = 'report-photos' AND auth.uid()::text = (storage.foldername(name))[1]);
--- CREATE POLICY "report-photos: proprietario legge" ON storage.objects FOR SELECT
---   USING (bucket_id = 'report-photos' AND auth.uid()::text = (storage.foldername(name))[1]);
--- CREATE POLICY "report-photos: manager admin leggono" ON storage.objects FOR SELECT
---   USING (bucket_id = 'report-photos' AND EXISTS (
---     SELECT 1 FROM public.profiles WHERE id = auth.uid() AND ruolo IN ('manager', 'admin')
---   ));
--- CREATE POLICY "report-photos: proprietario elimina" ON storage.objects FOR DELETE
---   USING (bucket_id = 'report-photos' AND auth.uid()::text = (storage.foldername(name))[1]);
+-- Fine schema principale.
+-- Per lo storage (bucket report-photos e avatars) eseguire: supabase/storage-setup.sql
