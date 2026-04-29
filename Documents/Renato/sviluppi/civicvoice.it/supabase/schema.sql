@@ -28,6 +28,18 @@ END $$;
 -- ============================================================
 -- FUNZIONI di supporto (CREATE OR REPLACE = idempotente)
 -- ============================================================
+
+-- Helper SECURITY DEFINER: legge ruolo senza innescare RLS su profiles
+CREATE OR REPLACE FUNCTION public.get_my_role()
+RETURNS public.user_role
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT ruolo FROM public.profiles WHERE id = auth.uid()
+$$;
+
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -87,22 +99,12 @@ CREATE POLICY "profiles: utente aggiorna solo se stesso"
 DROP POLICY IF EXISTS "profiles: admin vede tutti" ON public.profiles;
 CREATE POLICY "profiles: admin vede tutti"
   ON public.profiles FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.ruolo = 'admin'
-    )
-  );
+  USING (public.get_my_role() = 'admin');
 
 DROP POLICY IF EXISTS "profiles: admin aggiorna tutti" ON public.profiles;
 CREATE POLICY "profiles: admin aggiorna tutti"
   ON public.profiles FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.ruolo = 'admin'
-    )
-  );
+  USING (public.get_my_role() = 'admin');
 
 -- ============================================================
 -- TABELLA: categories

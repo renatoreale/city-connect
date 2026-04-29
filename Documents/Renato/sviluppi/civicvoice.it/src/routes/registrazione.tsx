@@ -23,17 +23,19 @@ export const Route = createFileRoute("/registrazione")({
 });
 
 function SignupPage() {
-  const { signUp, refreshProfile } = useAuth();
+  const { user, profile, signUp, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  const isAlreadyLoggedIn = !!user;
+
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [nome, setNome] = useState("");
-  const [cognome, setCognome] = useState("");
-  const [cf, setCf] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [citta, setCitta] = useState("");
+  const [nome, setNome] = useState(profile?.nome ?? "");
+  const [cognome, setCognome] = useState(profile?.cognome ?? "");
+  const [cf, setCf] = useState(profile?.codice_fiscale ?? "");
+  const [telefono, setTelefono] = useState(profile?.telefono ?? "");
+  const [citta, setCitta] = useState(profile?.citta ?? "");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,6 +64,55 @@ function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isAlreadyLoggedIn) {
+      // Utente già autenticato: completa solo il profilo
+      if (!nome || !cognome) {
+        toast.error("Nome e cognome sono obbligatori.");
+        return;
+      }
+      if (cf && cf.length !== 16) {
+        toast.error("Il codice fiscale deve essere di 16 caratteri.");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const userId = user!.id;
+        let fotoUrl: string | null = profile?.foto_profilo_url ?? null;
+        if (photoFile) {
+          fotoUrl = await uploadAvatar(userId, photoFile);
+        }
+
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            nome,
+            cognome,
+            telefono: telefono || null,
+            codice_fiscale: cf.toUpperCase() || null,
+            citta: citta || null,
+            foto_profilo_url: fotoUrl,
+            profile_completed: true,
+          })
+          .eq("id", userId);
+
+        if (error) throw error;
+
+        await refreshProfile();
+        toast.success("Profilo completato! Ora puoi inviare segnalazioni.");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        navigate({ to: "/nuova" as any });
+      } catch (err: unknown) {
+        const msg = (err as { message?: string })?.message ?? "Errore nell'aggiornamento del profilo.";
+        toast.error(msg);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Nuovo utente: crea account + profilo
     if (!nome || !cognome || !email || !password) {
       toast.error("Compila tutti i campi obbligatori.");
       return;
@@ -77,11 +128,8 @@ function SignupPage() {
 
     setLoading(true);
     try {
-      // 1. Crea account Supabase Auth
       await signUp(email, password);
 
-      // 2. Attendi che il trigger crei il profilo, poi lo aggiorniamo
-      //    Recupera la sessione appena creata
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
 
@@ -93,13 +141,11 @@ function SignupPage() {
         return;
       }
 
-      // 3. Upload foto profilo (se fornita)
       let fotoUrl: string | null = null;
       if (photoFile) {
         fotoUrl = await uploadAvatar(userId, photoFile);
       }
 
-      // 4. Aggiorna profilo con dati anagrafici
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
@@ -145,11 +191,12 @@ function SignupPage() {
 
         <div className="mt-6">
           <h1 className="font-display text-4xl font-extrabold">
-            Crea il tuo profilo
+            {isAlreadyLoggedIn ? "Completa il tuo profilo" : "Crea il tuo profilo"}
           </h1>
           <p className="mt-2 text-muted-foreground">
-            Per inviare segnalazioni servono dati anagrafici verificabili e una
-            foto profilo.
+            {isAlreadyLoggedIn
+              ? "Aggiungi nome e cognome per poter inviare segnalazioni."
+              : "Per inviare segnalazioni servono dati anagrafici verificabili e una foto profilo."}
           </p>
         </div>
 
@@ -265,43 +312,45 @@ function SignupPage() {
             </div>
           </section>
 
-          {/* Account */}
-          <section>
-            <h2 className="font-display text-lg font-bold">Account</h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="email">
-                  Email <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="nome@esempio.it"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                  autoComplete="email"
-                  required
-                />
+          {/* Account — solo per nuovi utenti */}
+          {!isAlreadyLoggedIn && (
+            <section>
+              <h2 className="font-display text-lg font-bold">Account</h2>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="email">
+                    Email <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="nome@esempio.it"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={loading}
+                    autoComplete="email"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">
+                    Password <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Min. 8 caratteri"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">
-                  Password <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Min. 8 caratteri"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  autoComplete="new-password"
-                  required
-                  minLength={8}
-                />
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
             <p className="text-xs text-muted-foreground">
@@ -321,15 +370,17 @@ function SignupPage() {
           </div>
         </form>
 
-        <div className="mt-6 text-center text-sm text-muted-foreground">
-          Hai già un profilo?{" "}
-          <Link
-            to="/login"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Accedi
-          </Link>
-        </div>
+        {!isAlreadyLoggedIn && (
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            Hai già un profilo?{" "}
+            <Link
+              to="/login"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Accedi
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

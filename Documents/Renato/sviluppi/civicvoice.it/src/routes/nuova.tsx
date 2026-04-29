@@ -113,11 +113,6 @@ function NewReportPage() {
       navigate({ to: "/login" });
       return;
     }
-    if (profile !== null && !profile.profile_completed) {
-      toast.warning("Completa il profilo prima di inviare segnalazioni.");
-      navigate({ to: "/registrazione" });
-      return;
-    }
     loadLookups();
   }, [user, profile, authLoading]);
 
