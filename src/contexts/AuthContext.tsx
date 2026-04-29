@@ -8,6 +8,7 @@ import {
 import type { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import type { Profile, UserRole } from "@/lib/database.types";
+import { RUOLI_STAFF, RUOLI_ADMIN } from "@/lib/database.types";
 
 interface AuthContextValue {
   user: User | null;
@@ -15,6 +16,13 @@ interface AuthContextValue {
   profile: Profile | null;
   role: UserRole | null;
   loading: boolean;
+  // Role helpers
+  isSuperAdmin: boolean;
+  isAdmin: boolean;    // super_admin + admin_regione + admin_comune + admin_ufficio
+  isStaff: boolean;   // tutti tranne cittadino
+  isOperatore: boolean;
+  isSquadra: boolean;
+  isCittadino: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -102,14 +110,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
+  const role = profile?.ruolo ?? null;
+  const isSuperAdmin = role === "super_admin";
+  const isAdmin = role !== null && RUOLI_ADMIN.includes(role);
+  const isStaff = role !== null && RUOLI_STAFF.includes(role);
+  const isOperatore = role === "operatore_ufficio";
+  const isSquadra = role === "squadra_lavoro";
+  const isCittadino = role === "cittadino";
+
   return (
     <AuthContext.Provider
       value={{
         user,
         session,
         profile,
-        role: profile?.ruolo ?? null,
+        role,
         loading,
+        isSuperAdmin,
+        isAdmin,
+        isStaff,
+        isOperatore,
+        isSquadra,
+        isCittadino,
         signIn,
         signUp,
         signOut,

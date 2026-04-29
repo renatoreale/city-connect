@@ -42,9 +42,15 @@ const STATUS_OPTIONS: { value: ReportStatus; label: string }[] = [
   { value: "in_valutazione", label: "In valutazione" },
   { value: "assegnata", label: "Assegnata" },
   { value: "in_lavorazione", label: "In lavorazione" },
+  { value: "terminata", label: "Terminata" },
   { value: "risolta", label: "Risolta" },
   { value: "respinta", label: "Respinta" },
   { value: "archiviata", label: "Archiviata" },
+];
+
+const STATUS_OPTIONS_SQUADRA: { value: ReportStatus; label: string }[] = [
+  { value: "in_lavorazione", label: "In lavorazione" },
+  { value: "terminata", label: "Terminata" },
 ];
 
 const STATUS_COLOR: Record<ReportStatus, string> = {
@@ -52,13 +58,14 @@ const STATUS_COLOR: Record<ReportStatus, string> = {
   in_valutazione: "bg-primary/10 text-primary",
   assegnata: "bg-blue-100 text-blue-700",
   in_lavorazione: "bg-primary/20 text-primary",
+  terminata: "bg-teal-100 text-teal-700",
   risolta: "bg-success/15 text-success",
   respinta: "bg-destructive/10 text-destructive",
   archiviata: "bg-secondary text-secondary-foreground",
 };
 
 function ManagerPage() {
-  const { user, role, loading: authLoading } = useAuth();
+  const { user, role, isStaff, isSquadra, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [reports, setReports] = useState<Report[]>([]);
@@ -78,9 +85,9 @@ function ManagerPage() {
     if (authLoading) return;
     if (!user) { navigate({ to: "/login" }); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (role === "citizen") { navigate({ to: "/mie-segnalazioni" as any }); return; }
+    if (!isStaff) { navigate({ to: "/mie-segnalazioni" as any }); return; }
     fetchData();
-  }, [user, role, authLoading]);
+  }, [user, isStaff, authLoading]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -176,14 +183,15 @@ function ManagerPage() {
       <section className="border-b border-border bg-secondary/40">
         <div className="mx-auto max-w-6xl px-4 py-10">
           <div className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-            Area Manager
+            {isSquadra ? "Area Squadra" : "Area Operativa"}
           </div>
           <h1 className="mt-2 font-display text-4xl font-extrabold md:text-5xl">
-            Triage e assegnazione
+            {isSquadra ? "Lavori assegnati" : "Gestione segnalazioni"}
           </h1>
           <p className="mt-3 max-w-2xl text-muted-foreground">
-            Categorizza ogni segnalazione e assegnala all'ufficio competente.
-            Il segnalatore resta anonimo.
+            {isSquadra
+              ? "Visualizza i lavori assegnati alla tua squadra e aggiorna lo stato di avanzamento."
+              : "Categorizza ogni segnalazione e assegnala all'ufficio competente. Il segnalatore resta anonimo."}
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
             <StatCard icon={ClipboardList} label="Totale" value={stats.totale} />
@@ -351,7 +359,7 @@ function ManagerPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {STATUS_OPTIONS.map((s) => (
+                          {(isSquadra ? STATUS_OPTIONS_SQUADRA : STATUS_OPTIONS).map((s) => (
                             <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                           ))}
                         </SelectContent>

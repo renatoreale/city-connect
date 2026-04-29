@@ -137,20 +137,31 @@ export function SiteHeader() {
 function buildNav(role: string | null): { to: string; label: string }[] {
   const base = [{ to: "/feed", label: "Segnalazioni" }];
   if (!role) return base;
-  if (role === "citizen") {
+
+  if (role === "cittadino") {
     return [
       ...base,
       { to: "/mie-segnalazioni", label: "Le mie segnalazioni" },
       { to: "/nuova", label: "Nuova segnalazione" },
     ];
   }
-  if (role === "manager") {
-    return [...base, { to: "/manager", label: "Area Manager" }];
+  if (role === "squadra_lavoro") {
+    return [...base, { to: "/manager", label: "Lavori assegnati" }];
   }
-  if (role === "admin") {
+  if (role === "operatore_ufficio") {
+    return [...base, { to: "/manager", label: "Gestione segnalazioni" }];
+  }
+  if (["admin_ufficio", "admin_comune", "admin_regione"].includes(role)) {
     return [
       ...base,
-      { to: "/manager", label: "Manager" },
+      { to: "/manager", label: "Segnalazioni" },
+      { to: "/admin", label: "Pannello admin" },
+    ];
+  }
+  if (role === "super_admin") {
+    return [
+      ...base,
+      { to: "/manager", label: "Segnalazioni" },
       { to: "/admin", label: "Admin" },
     ];
   }
