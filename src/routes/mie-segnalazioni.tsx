@@ -7,15 +7,24 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  MapPin,
+  Calendar,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
-import type { Report, ReportStatus } from "@/lib/database.types";
+import type { Report, ReportStatus, ReportPhoto } from "@/lib/database.types";
 
 export const Route = createFileRoute("/mie-segnalazioni")({
   head: () => ({
@@ -42,6 +51,7 @@ function MieSegnalazioniPage() {
   const navigate = useNavigate();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Report | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -67,9 +77,27 @@ function MieSegnalazioniPage() {
 
     if (error) {
       toast.error("Errore nel caricamento delle segnalazioni.");
-    } else {
-      setReports((data as Report[]) ?? []);
+      setLoading(false);
+      return;
     }
+
+    // Genera signed URL per ogni foto (bucket privato)
+    const reportsWithSignedUrls = await Promise.all(
+      ((data as Report[]) ?? []).map(async (report) => {
+        if (!report.foto?.length) return report;
+        const signedFoto = await Promise.all(
+          report.foto.map(async (f: ReportPhoto) => {
+            const { data: signed } = await supabase.storage
+              .from("report-photos")
+              .createSignedUrl(f.file_path, 3600);
+            return { ...f, file_url: signed?.signedUrl ?? f.file_url };
+          })
+        );
+        return { ...report, foto: signedFoto };
+      })
+    );
+
+    setReports(reportsWithSignedUrls);
     setLoading(false);
   };
 
@@ -151,24 +179,105 @@ function MieSegnalazioniPage() {
         ) : (
           <div className="space-y-4">
             {reports.map((report) => (
-              <ReportRow key={report.id} report={report} />
+              <ReportRow key={report.id} report={report} onClick={() => setSelected(report)} />
             ))}
           </div>
         )}
       </section>
 
       <SiteFooter />
+
+      {/* Dialog dettaglio segnalazione */}
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display text-xl">{selected.titolo}</DialogTitle>
+              </DialogHeader>
+
+              {/* Foto */}
+              {selected.foto && selected.foto.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {selected.foto.map((f) => (
+                    <a key={f.id} href={f.file_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={f.file_url}
+                        alt=""
+                        className="aspect-square w-full rounded-xl object-cover hover:opacity-90"
+                      />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {/* Stato e priorità */}
+              <div className="flex flex-wrap gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CONFIG[selected.stato].color}`}>
+                  {STATUS_CONFIG[selected.stato].label}
+                </span>
+                <Badge variant="outline" className="text-xs capitalize">{selected.priorita}</Badge>
+                {selected.categoria && (
+                  <Badge variant="secondary" className="text-xs">
+                    {(selected.categoria as { nome: string }).nome}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Descrizione */}
+              <p className="text-sm text-muted-foreground">{selected.descrizione}</p>
+
+              {/* Indirizzo */}
+              <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3 text-sm">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <div>{selected.via}{selected.numero_civico ? `, ${selected.numero_civico}` : ""}</div>
+                  <div className="text-muted-foreground">
+                    {[selected.cap, selected.citta, selected.provincia].filter(Boolean).join(" ")}
+                  </div>
+                  {selected.riferimenti_aggiuntivi && (
+                    <div className="mt-1 text-muted-foreground">{selected.riferimenti_aggiuntivi}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Data */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                Inviata il {new Date(selected.created_at).toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" })}
+              </div>
+
+              {/* Motivo respinta */}
+              {selected.motivo_respinta && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                  <strong>Motivo respinta:</strong> {selected.motivo_respinta}
+                </div>
+              )}
+
+              {/* Note manager */}
+              {selected.note_manager && (
+                <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm">
+                  <strong className="text-xs uppercase tracking-wide text-muted-foreground">Note</strong>
+                  <p className="mt-1">{selected.note_manager}</p>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function ReportRow({ report }: { report: Report }) {
+function ReportRow({ report, onClick }: { report: Report; onClick: () => void }) {
   const cfg = STATUS_CONFIG[report.stato];
   const primaFoto = report.foto?.[0]?.file_url;
 
   return (
-    <div
-      className="flex gap-4 rounded-2xl border border-border bg-card p-4 transition hover:border-primary/30"
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full gap-4 rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary/40 hover:shadow-md"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       {primaFoto && (
@@ -195,7 +304,7 @@ function ReportRow({ report }: { report: Report }) {
         <p className="line-clamp-2 text-sm text-muted-foreground">
           {report.descrizione}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {report.categoria && (
             <Badge variant="secondary" className="text-xs">
               {(report.categoria as { nome: string }).nome}
@@ -211,9 +320,10 @@ function ReportRow({ report }: { report: Report }) {
               Motivo respinta: {report.motivo_respinta}
             </span>
           )}
+          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
