@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm list *)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(vercel --version)",
+      "Bash(vercel whoami *)",
+      "Bash(vercel --prod --yes)",
+      "Bash(vercel env *)",
+      "Bash(vercel inspect *)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:4173/)",
+      "Bash(vercel ls *)",
+      "Bash(vercel --prod --yes --force)",
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq *vite*\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(git push *)",
+      "Bash(git remote *)",
+      "Bash(git checkout *)",
+      "Bash(git init *)"
+    ]
+  }
+}
