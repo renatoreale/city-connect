@@ -71,6 +71,9 @@ function AdminPage() {
   const [geoRegioneId, setGeoRegioneId] = useState("");
   const [geoComuneId, setGeoComuneId] = useState("");
   const [geoUfficioId, setGeoUfficioId] = useState("");
+  // Filtri a cascata nel dialog squadra/ufficio
+  const [geoFilterRegioneId, setGeoFilterRegioneId] = useState("");
+  const [geoFilterComuneId, setGeoFilterComuneId] = useState("");
   const [savingGeo, setSavingGeo] = useState(false);
 
   // Dialog lookup (categorie/settori)
@@ -141,6 +144,16 @@ function AdminPage() {
     setSavingUser(false);
   };
 
+  const resetGeoDialog = () => {
+    setGeoDialog(null);
+    setGeoNome("");
+    setGeoRegioneId("");
+    setGeoComuneId("");
+    setGeoUfficioId("");
+    setGeoFilterRegioneId("");
+    setGeoFilterComuneId("");
+  };
+
   const saveGeo = async () => {
     if (!geoDialog || !geoNome.trim()) return;
     setSavingGeo(true);
@@ -155,7 +168,7 @@ function AdminPage() {
       ({ error } = await supabase.from("squadre_lavoro").insert({ nome: geoNome.trim(), ufficio_id: geoUfficioId }));
     }
     if (error) { toast.error("Errore nella creazione."); }
-    else { toast.success("Creato con successo."); setGeoDialog(null); setGeoNome(""); await fetchAll(); }
+    else { toast.success("Creato con successo."); resetGeoDialog(); await fetchAll(); }
     setSavingGeo(false);
   };
 
@@ -339,14 +352,14 @@ function AdminPage() {
               <GeoSection
                 title="Uffici" icon={Wrench}
                 items={uffici.map((u) => ({ id: u.id, label: `${u.nome}${u.comune ? ` — ${(u.comune as any).nome}` : ""}` }))}
-                onAdd={() => { setGeoDialog({ type: "ufficio" }); setGeoNome(""); setGeoComuneId(""); }}
+                onAdd={() => { resetGeoDialog(); setGeoDialog({ type: "ufficio" }); }}
                 onDelete={(id) => deleteGeo("uffici", id)}
               />
               {/* Squadre */}
               <GeoSection
                 title="Squadre di lavoro" icon={Users}
                 items={squadre.map((s) => ({ id: s.id, label: `${s.nome}${s.ufficio ? ` — ${(s.ufficio as any).nome}` : ""}` }))}
-                onAdd={() => { setGeoDialog({ type: "squadra" }); setGeoNome(""); setGeoUfficioId(""); }}
+                onAdd={() => { resetGeoDialog(); setGeoDialog({ type: "squadra" }); }}
                 onDelete={(id) => deleteGeo("squadre_lavoro", id)}
               />
             </div>
@@ -478,7 +491,7 @@ function AdminPage() {
       </Dialog>
 
       {/* Dialog entità geografica */}
-      <Dialog open={!!geoDialog} onOpenChange={() => setGeoDialog(null)}>
+      <Dialog open={!!geoDialog} onOpenChange={resetGeoDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -489,29 +502,77 @@ function AdminPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+
+            {/* Comune: seleziona regione */}
             {geoDialog?.type === "comune" && (
-              <Select value={geoRegioneId} onValueChange={setGeoRegioneId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona regione" /></SelectTrigger>
-                <SelectContent>{regioni.map((r) => <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>)}</SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Regione</label>
+                <Select value={geoRegioneId} onValueChange={setGeoRegioneId}>
+                  <SelectTrigger><SelectValue placeholder="Seleziona regione" /></SelectTrigger>
+                  <SelectContent>{regioni.map((r) => <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
             )}
-            {geoDialog?.type === "ufficio" && (
-              <Select value={geoComuneId} onValueChange={setGeoComuneId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona comune" /></SelectTrigger>
-                <SelectContent>{comuni.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
-            {geoDialog?.type === "squadra" && (
-              <Select value={geoUfficioId} onValueChange={setGeoUfficioId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona ufficio" /></SelectTrigger>
-                <SelectContent>{uffici.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}</SelectContent>
-              </Select>
-            )}
+
+            {/* Ufficio: regione → comune */}
+            {geoDialog?.type === "ufficio" && (<>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Regione</label>
+                <Select value={geoFilterRegioneId} onValueChange={(v) => { setGeoFilterRegioneId(v); setGeoComuneId(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Filtra per regione" /></SelectTrigger>
+                  <SelectContent>{regioni.map((r) => <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Comune</label>
+                <Select value={geoComuneId} onValueChange={setGeoComuneId} disabled={!geoFilterRegioneId}>
+                  <SelectTrigger><SelectValue placeholder={geoFilterRegioneId ? "Seleziona comune" : "Prima seleziona la regione"} /></SelectTrigger>
+                  <SelectContent>
+                    {comuni.filter((c) => c.regione_id === geoFilterRegioneId).map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>)}
+
+            {/* Squadra: regione → comune → ufficio */}
+            {geoDialog?.type === "squadra" && (<>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Regione</label>
+                <Select value={geoFilterRegioneId} onValueChange={(v) => { setGeoFilterRegioneId(v); setGeoFilterComuneId(""); setGeoUfficioId(""); }}>
+                  <SelectTrigger><SelectValue placeholder="Filtra per regione" /></SelectTrigger>
+                  <SelectContent>{regioni.map((r) => <SelectItem key={r.id} value={r.id}>{r.nome}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Comune</label>
+                <Select value={geoFilterComuneId} onValueChange={(v) => { setGeoFilterComuneId(v); setGeoUfficioId(""); }} disabled={!geoFilterRegioneId}>
+                  <SelectTrigger><SelectValue placeholder={geoFilterRegioneId ? "Seleziona comune" : "Prima seleziona la regione"} /></SelectTrigger>
+                  <SelectContent>
+                    {comuni.filter((c) => c.regione_id === geoFilterRegioneId).map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Ufficio</label>
+                <Select value={geoUfficioId} onValueChange={setGeoUfficioId} disabled={!geoFilterComuneId}>
+                  <SelectTrigger><SelectValue placeholder={geoFilterComuneId ? "Seleziona ufficio" : "Prima seleziona il comune"} /></SelectTrigger>
+                  <SelectContent>
+                    {uffici.filter((u) => u.comune_id === geoFilterComuneId).map((u) => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>)}
+
             <Input placeholder="Nome" value={geoNome} onChange={(e) => setGeoNome(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGeoDialog(null)}>Annulla</Button>
-            <Button onClick={saveGeo} disabled={savingGeo || !geoNome.trim()}>
+            <Button variant="outline" onClick={resetGeoDialog}>Annulla</Button>
+            <Button onClick={saveGeo} disabled={
+              savingGeo || !geoNome.trim() ||
+              (geoDialog?.type === "comune" && !geoRegioneId) ||
+              (geoDialog?.type === "ufficio" && !geoComuneId) ||
+              (geoDialog?.type === "squadra" && !geoUfficioId)
+            }>
               {savingGeo ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Crea
             </Button>
           </DialogFooter>
